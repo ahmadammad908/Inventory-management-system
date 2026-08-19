@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Plus, ShoppingBag } from "lucide-react";
 import { Product, Category } from "@/types";
 import { formatPKR } from "@/lib/utils";
@@ -16,30 +16,57 @@ export function ProductCatalogGrid({
   categories,
   onAddToCart,
 }: ProductCatalogGridProps) {
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  // "all" ya category ki MongoDB _id
+  const [selectedCategoryId, setSelectedCategoryId] =
+    useState<string>("all");
+
   const [searchTerm, setSearchTerm] = useState<string>("");
+
+  // ==================================================
+  // CATEGORY ID -> NAME LOOKUP (product card pe naam dikhane ke liye)
+  // ==================================================
+
+  const categoryNameById = useMemo(() => {
+    const map = new Map<string, string>();
+
+    categories.forEach((cat) => {
+      map.set(cat.id, cat.name);
+    });
+
+    return map;
+  }, [categories]);
+
+  const getCategoryName = (categoryId?: string) =>
+    (categoryId && categoryNameById.get(categoryId)) ||
+    "Uncategorized";
+
+  // ==================================================
+  // FILTER
+  // ==================================================
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       const matchCategory =
-        selectedCategory === "all" ||
-        p.category.toLowerCase() === selectedCategory.toLowerCase();
+        selectedCategoryId === "all" ||
+        (p as any).categoryId === selectedCategoryId;
+
       const matchSearch =
         searchTerm === "" ||
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.sku.toLowerCase().includes(searchTerm.toLowerCase());
+
       return matchCategory && matchSearch;
     });
-  }, [products, selectedCategory, searchTerm]);
+  }, [products, selectedCategoryId, searchTerm]);
 
   return (
     <div className="flex flex-col h-full bg-slate-50/50 rounded-2xl border border-slate-200/80 p-4">
       {/* Category Pills Bar */}
       <div className="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none shrink-0">
         <button
-          onClick={() => setSelectedCategory("all")}
+          onClick={() => setSelectedCategoryId("all")}
           className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap leading-none transition-all ${
-            selectedCategory === "all"
+            selectedCategoryId === "all"
               ? "bg-slate-900 text-white shadow-sm"
               : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
           }`}
@@ -49,14 +76,15 @@ export function ProductCatalogGrid({
 
         {categories.map((cat) => {
           const count = products.filter(
-            (p) => p.category.toLowerCase() === cat.name.toLowerCase()
+            (p) => (p as any).categoryId === cat.id
           ).length;
-          const isSelected = selectedCategory.toLowerCase() === cat.name.toLowerCase();
+
+          const isSelected = selectedCategoryId === cat.id;
 
           return (
             <button
               key={cat.id}
-              onClick={() => setSelectedCategory(cat.name)}
+              onClick={() => setSelectedCategoryId(cat.id)}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap leading-none transition-all ${
                 isSelected
                   ? "bg-emerald-600 text-white shadow-sm"
@@ -92,7 +120,7 @@ export function ProductCatalogGrid({
                   {/* Card Top: Category and Stock Badge */}
                   <div className="flex items-center justify-between gap-1.5 w-full mb-2 shrink-0">
                     <span className="text-[10px] font-semibold text-slate-500 truncate bg-slate-100 px-2 py-0.5 rounded-md leading-none max-w-[60%]">
-                      {product.category}
+                      {getCategoryName((product as any).categoryId)}
                     </span>
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap leading-none ${

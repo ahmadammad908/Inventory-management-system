@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { 
   TrendingUp, 
@@ -17,16 +17,155 @@ import {
   Receipt,
   Printer,
   BarChart3,
-  Percent
+  Percent,
+  RefreshCw,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatPKR, formatDate, formatTime } from "@/lib/utils";
 import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
 import { Sale } from "@/types";
 
+// Fallback polling interval — real-time SSE ke connect na hone par
+// (ya beech mein disconnect ho jaye) ye backup ke tor pe chalega.
+// SSE working ho to ye zyada matter nahi karta.
+const AUTO_REFRESH_INTERVAL_MS = 15000;
+
+// SSE reconnect ke beech gap (agar connection drop ho jaye)
+const SSE_RECONNECT_DELAY_MS = 3000;
+
 export function DashboardView() {
-  const { stats, products, sales, customers, settings } = useApp();
+  const { stats, products, sales, customers, settings, refreshAllData } = useApp();
+
+  // AppContext ka real refetch function — products, categories,
+  // customers, sales, ledger, settings, parkedCarts sab dobara
+  // MongoDB se load karta hai.
+  const refreshData = refreshAllData;
+
   const [selectedReceiptSale, setSelectedReceiptSale] = useState<Sale | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date>(new Date());
+
+  // Real-time connection status (SSE se aata hai)
+  const [isLive, setIsLive] = useState(false);
+
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ==========================================
+  // MANUAL / AUTO REFRESH HANDLER
+  // ==========================================
+
+  const handleRefresh = async () => {
+    if (!refreshData) return;
+
+    try {
+      setIsRefreshing(true);
+      await refreshData();
+      setLastUpdatedAt(new Date());
+    } catch (error) {
+      console.error("Dashboard refresh error:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // ==========================================
+  // REAL-TIME: Server-Sent Events (SSE)
+  // ==========================================
+  // Ye MongoDB Change Streams se connect hota hai (app/api/sales/stream/route.ts).
+  // Jab bhi kisi bhi device/POS terminal se koi sale create/update/delete
+  // hoti hai, MongoDB turant is stream ko event bhejta hai aur dashboard
+  // 1-2 second mein refresh ho jata hai — 15 sec wait nahi karna padta.
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const connect = () => {
+      if (cancelled) return;
+
+      const es = new EventSource("/api/sales/stream");
+      eventSourceRef.current = es;
+
+      es.onopen = () => {
+        setIsLive(true);
+      };
+
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === "sale_change") {
+            // Naya sale ya update — turant refresh karo
+            handleRefresh();
+          } else if (data.type === "error") {
+            // Change streams available nahi (shayad standalone MongoDB hai)
+            console.warn("Real-time stream unavailable, falling back to polling only.");
+            setIsLive(false);
+          }
+          // "connected" aur "ping" (heartbeat) ke liye kuch nahi karna
+        } catch (err) {
+          console.error("Failed to parse SSE message:", err);
+        }
+      };
+
+      es.onerror = () => {
+        setIsLive(false);
+        es.close();
+
+        // Thodi dair baad reconnect try karo
+        if (!cancelled) {
+          reconnectTimeoutRef.current = setTimeout(connect, SSE_RECONNECT_DELAY_MS);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      eventSourceRef.current?.close();
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ==========================================
+  // FALLBACK AUTO-REFRESH: interval + tab focus
+  // ==========================================
+  // Ye backup hai — agar SSE kisi wajah se disconnect ho ya
+  // browser/network usko support na kare, tab bhi data zyada
+  // dair stale nahi rahega.
+
+  useEffect(() => {
+    if (!refreshData) return;
+
+    intervalRef.current = setInterval(() => {
+      handleRefresh();
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        handleRefresh();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      handleRefresh();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshData]);
 
   // Top Selling Products calculation
   const topSellingProducts = React.useMemo(() => {
@@ -96,13 +235,46 @@ export function DashboardView() {
       {/* Top Banner / Welcome */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 rounded-3xl p-5 sm:p-7 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
               Retail Dashboard
             </span>
             <span className="text-xs text-slate-400 font-mono">
               {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
             </span>
+
+            {/* Live status indicator */}
+            <span
+              title={isLive ? "Real-time connected" : "Real-time offline — falling back to periodic refresh"}
+              className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                isLive
+                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                  : "bg-slate-500/15 text-slate-400 border-slate-500/20"
+              }`}
+            >
+              {isLive ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+              <span>{isLive ? "Live" : "Offline"}</span>
+            </span>
+
+            {/* Manual refresh */}
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              title="Refresh dashboard data"
+              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 text-[11px] font-semibold border border-white/10 transition-colors disabled:opacity-60"
+            >
+              <RefreshCw
+                className={`w-3 h-3 ${isRefreshing ? "animate-spin" : ""}`}
+              />
+              <span>
+                {isRefreshing
+                  ? "Refreshing..."
+                  : `Updated ${lastUpdatedAt.toLocaleTimeString("en-GB", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}`}
+              </span>
+            </button>
           </div>
           <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
             {settings.storeName}

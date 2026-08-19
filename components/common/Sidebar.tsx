@@ -11,7 +11,11 @@ import {
   BarChart3, 
   Settings, 
   X,
-  Store
+  Store,
+  Wallet,        // Added for Expenses
+  UserCheck,     // Added for Employees & Salaries
+  FileText,      // Added for Financial Reports
+  ScanLine       // Added for Barcode Manager
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatPKR } from "@/lib/utils";
@@ -40,7 +44,7 @@ export function Sidebar({ isMobileOpen = false, onCloseMobile }: SidebarProps) {
       highlight: true,
     },
     {
-      name: "Inventory Master",
+      name: "Inventory & Barcode",
       href: "/inventory",
       icon: Package,
       badge: stats.totalLowStockCount > 0 ? `${stats.totalLowStockCount} low` : undefined,
@@ -54,9 +58,19 @@ export function Sidebar({ isMobileOpen = false, onCloseMobile }: SidebarProps) {
       badgeColor: "bg-rose-100 text-rose-800 border border-rose-200",
     },
     {
-      name: "Reports & Sales Log",
+      name: "Employee Salaries",
+      href: "/employees",
+      icon: UserCheck,
+    },
+    {
+      name: "Expense Tracker",
+      href: "/expenses",
+      icon: Wallet,
+    },
+    {
+      name: "Financial Reports",
       href: "/reports",
-      icon: BarChart3,
+      icon: FileText,
     },
     {
       name: "Settings & Backup",
@@ -108,7 +122,7 @@ export function Sidebar({ isMobileOpen = false, onCloseMobile }: SidebarProps) {
           </div>
 
           {/* Navigation Links */}
-          <nav className="p-3 space-y-1.5 overflow-y-auto flex-1">
+          <nav className="p-3 space-y-1 overflow-y-auto flex-1">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
