@@ -1,21 +1,19 @@
 "use client";
 
-import React, { useState } from "react";
-import { 
-  Users, 
-  Plus, 
-  DollarSign, 
-  Calendar, 
-  Search, 
-  CheckCircle2, 
-  UserPlus, 
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Users,
+  DollarSign,
+  Search,
+  UserPlus,
   History,
-  CreditCard
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { formatPKR } from "@/lib/utils";
 
 interface Employee {
-  id: string;
+  _id: string;
   name: string;
   role: string;
   phone: string;
@@ -24,90 +22,153 @@ interface Employee {
 }
 
 interface SalaryPayment {
-  id: string;
+  _id: string;
   employeeId: string;
   employeeName: string;
   amount: number;
-  monthYear: string; // e.g., "August 2026"
+  monthYear: string;
   paymentDate: string;
   paymentMethod: "Cash" | "Bank Transfer" | "EasyPaisa/JazzCash";
   notes?: string;
 }
 
 export default function EmployeesPage() {
-  // Sample Initial Data (In real app, load from Context / LocalStorage / Database)
-  const [employees, setEmployees] = useState<Employee[]>([
-    { id: "EMP-001", name: "Ali Raza", role: "Sales Cashier", phone: "0300-1234567", baseSalary: 35000, status: "Active" },
-    { id: "EMP-002", name: "Usman Ahmed", role: "Inventory Helper", phone: "0321-7654321", baseSalary: 28000, status: "Active" },
-  ]);
-
-  const [payments, setPayments] = useState<SalaryPayment[]>([
-    { id: "PAY-101", employeeId: "EMP-001", employeeName: "Ali Raza", amount: 35000, monthYear: "July 2026", paymentDate: "2026-08-01", paymentMethod: "Cash", notes: "Monthly full salary" },
-  ]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [payments, setPayments] = useState<SalaryPayment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddEmpModalOpen, setIsAddEmpModalOpen] = useState(false);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  // New Employee Form State
   const [newEmp, setNewEmp] = useState({ name: "", role: "", phone: "", baseSalary: "" });
 
-  // Salary Payment Form State
   const [selectedEmpId, setSelectedEmpId] = useState("");
   const [payAmount, setPayAmount] = useState("");
   const [payMonth, setPayMonth] = useState("August 2026");
   const [payMethod, setPayMethod] = useState<SalaryPayment["paymentMethod"]>("Cash");
   const [payNotes, setPayNotes] = useState("");
 
-  // Handle Add Employee
-  const handleAddEmployee = (e: React.FormEvent) => {
+  // ---- Data fetching ----
+  const loadEmployees = useCallback(async () => {
+    const res = await fetch("/api/employees");
+    const json = await res.json();
+    if (json.success) setEmployees(json.data);
+  }, []);
+
+  const loadPayments = useCallback(async () => {
+    const res = await fetch("/api/salary-payments");
+    const json = await res.json();
+    if (json.success) setPayments(json.data);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        await Promise.all([loadEmployees(), loadPayments()]);
+      } catch (e) {
+        setError("Failed to load data. Please refresh.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [loadEmployees, loadPayments]);
+
+  // ---- Add Employee ----
+  const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEmp.name || !newEmp.baseSalary) return;
 
-    const createdEmp: Employee = {
-      id: `EMP-00${employees.length + 1}`,
-      name: newEmp.name,
-      role: newEmp.role || "Staff Member",
-      phone: newEmp.phone || "N/A",
-      baseSalary: Number(newEmp.baseSalary),
-      status: "Active",
-    };
+    try {
+      setSubmitting(true);
+      const res = await fetch("/api/employees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newEmp.name,
+          role: newEmp.role || "Staff Member",
+          phone: newEmp.phone || "N/A",
+          baseSalary: Number(newEmp.baseSalary),
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message);
 
-    setEmployees([...employees, createdEmp]);
-    setNewEmp({ name: "", role: "", phone: "", baseSalary: "" });
-    setIsAddEmpModalOpen(false);
+      setEmployees((prev) => [json.data, ...prev]);
+      setNewEmp({ name: "", role: "", phone: "", baseSalary: "" });
+      setIsAddEmpModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || "Failed to add employee");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  // Handle Pay Salary
-  const handlePaySalary = (e: React.FormEvent) => {
+  // ---- Record Salary Payment ----
+  const handlePaySalary = async (e: React.FormEvent) => {
     e.preventDefault();
-    const emp = employees.find((e) => e.id === selectedEmpId);
-    if (!emp || !payAmount) return;
+    if (!selectedEmpId || !payAmount) return;
 
-    const newPayment: SalaryPayment = {
-      id: `PAY-${Date.now().toString().slice(-4)}`,
-      employeeId: emp.id,
-      employeeName: emp.name,
-      amount: Number(payAmount),
-      monthYear: payMonth,
-      paymentDate: new Date().toISOString().split("T")[0],
-      paymentMethod: payMethod,
-      notes: payNotes,
-    };
+    try {
+      setSubmitting(true);
+      const res = await fetch("/api/salary-payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: selectedEmpId,
+          amount: Number(payAmount),
+          monthYear: payMonth,
+          paymentMethod: payMethod,
+          notes: payNotes,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message);
 
-    setPayments([newPayment, ...payments]);
-    setIsPayModalOpen(false);
-    setSelectedEmpId("");
-    setPayAmount("");
-    setPayNotes("");
+      setPayments((prev) => [json.data, ...prev]);
+      setIsPayModalOpen(false);
+      setSelectedEmpId("");
+      setPayAmount("");
+      setPayNotes("");
+    } catch (err: any) {
+      alert(err.message || "Failed to record payment");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ---- Delete Employee ----
+  const handleDeleteEmployee = async (id: string) => {
+    if (!confirm("Remove this employee? This won't delete their past payment history.")) return;
+    try {
+      const res = await fetch(`/api/employees/${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message);
+      setEmployees((prev) => prev.filter((emp) => emp._id !== id));
+    } catch (err: any) {
+      alert(err.message || "Failed to delete employee");
+    }
   };
 
   const filteredEmployees = employees.filter(
-    (e) => e.name.toLowerCase().includes(searchQuery.toLowerCase()) || e.role.toLowerCase().includes(searchQuery.toLowerCase())
+    (e) =>
+      e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      e.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const totalMonthlyPayroll = employees.reduce((acc, curr) => acc + curr.baseSalary, 0);
   const totalPaidThisMonth = payments.reduce((acc, curr) => acc + curr.amount, 0);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-950 text-slate-300">
+        <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading payroll data...
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto bg-slate-950 text-slate-100 min-h-screen">
@@ -135,6 +196,12 @@ export default function EmployeesPage() {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="bg-rose-950/40 border border-rose-800 text-rose-300 text-sm rounded-lg p-3">
+          {error}
+        </div>
+      )}
 
       {/* Stats Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -180,25 +247,39 @@ export default function EmployeesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
+              {filteredEmployees.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-6 text-center text-slate-500 text-xs">
+                    No employees found. Click "Add Employee" to get started.
+                  </td>
+                </tr>
+              )}
               {filteredEmployees.map((emp) => (
-                <tr key={emp.id} className="hover:bg-slate-800/40">
+                <tr key={emp._id} className="hover:bg-slate-800/40">
                   <td className="p-3">
                     <div className="font-bold text-white">{emp.name}</div>
-                    <div className="text-[11px] text-slate-500">{emp.id}</div>
+                    <div className="text-[11px] text-slate-500">{emp._id.slice(-6).toUpperCase()}</div>
                   </td>
                   <td className="p-3 text-slate-300">{emp.role}</td>
                   <td className="p-3 font-mono text-xs">{emp.phone}</td>
                   <td className="p-3 font-mono text-emerald-400 font-bold">{formatPKR(emp.baseSalary)}</td>
-                  <td className="p-3 text-right">
+                  <td className="p-3 text-right space-x-2">
                     <button
                       onClick={() => {
-                        setSelectedEmpId(emp.id);
+                        setSelectedEmpId(emp._id);
                         setPayAmount(emp.baseSalary.toString());
                         setIsPayModalOpen(true);
                       }}
                       className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 rounded-lg text-xs font-semibold"
                     >
                       Pay Salary
+                    </button>
+                    <button
+                      onClick={() => handleDeleteEmployee(emp._id)}
+                      className="px-2 py-1 bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20 rounded-lg text-xs"
+                      title="Remove employee"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </td>
                 </tr>
@@ -225,9 +306,18 @@ export default function EmployeesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
+              {payments.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-6 text-center text-slate-500 text-xs">
+                    No salary payments recorded yet.
+                  </td>
+                </tr>
+              )}
               {payments.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-800/40">
-                  <td className="p-3 text-xs font-mono text-slate-400">{p.paymentDate}</td>
+                <tr key={p._id} className="hover:bg-slate-800/40">
+                  <td className="p-3 text-xs font-mono text-slate-400">
+                    {new Date(p.paymentDate).toLocaleDateString()}
+                  </td>
                   <td className="p-3 font-medium text-white">{p.employeeName}</td>
                   <td className="p-3 text-xs text-slate-300">{p.monthYear}</td>
                   <td className="p-3 text-xs font-mono text-slate-400">{p.paymentMethod}</td>
@@ -295,9 +385,10 @@ export default function EmployeesPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-semibold"
+                  disabled={submitting}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
                 >
-                  Save Employee
+                  {submitting ? "Saving..." : "Save Employee"}
                 </button>
               </div>
             </form>
@@ -318,14 +409,14 @@ export default function EmployeesPage() {
                   value={selectedEmpId}
                   onChange={(e) => {
                     setSelectedEmpId(e.target.value);
-                    const emp = employees.find((emp) => emp.id === e.target.value);
+                    const emp = employees.find((emp) => emp._id === e.target.value);
                     if (emp) setPayAmount(emp.baseSalary.toString());
                   }}
                   className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500"
                 >
                   <option value="">-- Choose Staff --</option>
                   {employees.map((e) => (
-                    <option key={e.id} value={e.id}>
+                    <option key={e._id} value={e._id}>
                       {e.name} ({formatPKR(e.baseSalary)})
                     </option>
                   ))}
@@ -362,6 +453,15 @@ export default function EmployeesPage() {
                   <option value="EasyPaisa/JazzCash">EasyPaisa / JazzCash</option>
                 </select>
               </div>
+              <div>
+                <label className="text-xs text-slate-400">Notes (optional)</label>
+                <input
+                  type="text"
+                  value={payNotes}
+                  onChange={(e) => setPayNotes(e.target.value)}
+                  className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
               <div className="flex gap-2 justify-end pt-3">
                 <button
                   type="button"
@@ -372,9 +472,10 @@ export default function EmployeesPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-semibold"
+                  disabled={submitting}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
                 >
-                  Record Payment
+                  {submitting ? "Recording..." : "Record Payment"}
                 </button>
               </div>
             </form>

@@ -15,7 +15,8 @@ import {
   Wallet,        // Added for Expenses
   UserCheck,     // Added for Employees & Salaries
   FileText,      // Added for Financial Reports
-  ScanLine       // Added for Barcode Manager
+  ScanLine,      // Added for Barcode Manager
+  Truck          // Added for Suppliers & Vendors
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatPKR } from "@/lib/utils";
@@ -51,11 +52,9 @@ export function Sidebar({ isMobileOpen = false, onCloseMobile }: SidebarProps) {
       badgeColor: "bg-amber-100 text-amber-800 border border-amber-300",
     },
     {
-      name: "Customer Khata (Udhaar)",
-      href: "/khata",
-      icon: Users,
-      badge: stats.totalUdhaarReceivables > 0 ? formatPKR(stats.totalUdhaarReceivables) : undefined,
-      badgeColor: "bg-rose-100 text-rose-800 border border-rose-200",
+      name: "Suppliers & Vendors",
+      href: "/suppliers",
+      icon: Truck,
     },
     {
       name: "Employee Salaries",
@@ -69,7 +68,7 @@ export function Sidebar({ isMobileOpen = false, onCloseMobile }: SidebarProps) {
     },
     {
       name: "Financial Reports",
-      href: "/reports",
+      href: "/report",
       icon: FileText,
     },
     {
