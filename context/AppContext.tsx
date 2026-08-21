@@ -34,6 +34,9 @@ import {
   getStoredParkedCarts,
   createParkedCart as apiCreateParkedCart,
   deleteStoredParkedCart,
+  seedStoredData,
+  resetStoredData,
+  restoreBackupData,
 } from "@/lib/storage/storage-manager";
 import { calculateCartTotals } from "@/lib/utils";
 
@@ -96,17 +99,31 @@ interface AppContextType {
   updateSettings: (updates: Partial<StoreSettings>) => Promise<boolean>;
   refreshAllData: () => Promise<void>;
   voidSale: (saleId: string) => Promise<boolean>;
+  seedData: (sample?: boolean) => Promise<boolean>;
+  restoreData: (jsonContent: string) => Promise<{ success: boolean; message: string }>;
+  resetData: () => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
 
 const defaultSettings: StoreSettings = {
   storeName: "My Store",
+  tagline: "",
+  phone: "",
+  whatsapp: "",
+  address: "",
+  city: "",
+  ntnNumber: "",
+  strnNumber: "",
+  receiptFooter: "",
+  receiptHeaderNotice: "",
   defaultTaxRate: 0,
   enableTax: false,
-  cashierName: "Admin",
   currencySymbol: "Rs.",
-} as StoreSettings;
+  defaultLowStockThreshold: 10,
+  receiptPaperSize: "80mm",
+  cashierName: "Admin",
+};
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
@@ -548,6 +565,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await loadAllData();
   }, [loadAllData]);
 
+  // --- Seed / Restore / Reset ---
+  const seedData = useCallback(async (sample: boolean = true): Promise<boolean> => {
+    try {
+      await seedStoredData(sample);
+      await loadAllData();
+      return true;
+    } catch (err) {
+      console.error("Failed to seed data:", err);
+      return false;
+    }
+  }, [loadAllData]);
+
+  const restoreData = useCallback(async (jsonContent: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const parsed = JSON.parse(jsonContent);
+      const result = await restoreBackupData(parsed);
+      await loadAllData();
+      return { success: true, message: result?.message || "Data restored successfully." };
+    } catch (err: any) {
+      console.error("Failed to restore data:", err);
+      return { success: false, message: err?.message || "Invalid or corrupted backup file." };
+    }
+  }, [loadAllData]);
+
+  const resetData = useCallback(async (): Promise<boolean> => {
+    try {
+      await resetStoredData();
+      await loadAllData();
+      return true;
+    } catch (err) {
+      console.error("Failed to reset data:", err);
+      return false;
+    }
+  }, [loadAllData]);
+
   const value: AppContextType = {
     products,
     categories,
@@ -596,6 +648,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateSettings,
     refreshAllData,
     voidSale,
+    seedData,
+    restoreData,
+    resetData,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

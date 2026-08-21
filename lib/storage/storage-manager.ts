@@ -167,3 +167,46 @@ export async function saveStoredSettings(updates: Partial<StoreSettings>): Promi
   });
   return handleRes(res);
 }
+
+// ---------- Seed / Reset / Backup ----------
+export async function seedStoredData(sample: boolean = true): Promise<{ success: boolean; message?: string }> {
+  const res = await fetch(`${BASE}/seed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sample }),
+  });
+  return handleRes(res);
+}
+
+export async function resetStoredData(): Promise<{ success: boolean; message?: string }> {
+  const res = await fetch(`${BASE}/reset`, { method: "POST" });
+  return handleRes(res);
+}
+
+export async function fetchBackupData(): Promise<Record<string, any>> {
+  const res = await fetch(`${BASE}/backup`);
+  return handleRes(res);
+}
+
+export async function restoreBackupData(payload: Record<string, any>): Promise<{ success: boolean; message?: string }> {
+  const res = await fetch(`${BASE}/backup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleRes(res);
+}
+
+export async function downloadBackupFile(): Promise<void> {
+  const data = await fetchBackupData();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  a.href = url;
+  a.download = `pos-backup-${timestamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

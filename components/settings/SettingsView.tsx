@@ -38,15 +38,23 @@ export function SettingsView() {
     }));
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings(formData);
-    showToast("Store settings saved successfully!");
+    const ok = await updateSettings(formData);
+    if (ok) {
+      showToast("Store settings saved successfully!");
+    } else {
+      alert("Failed to save settings. Please try again.");
+    }
   };
 
-  const handleDownloadBackup = () => {
-    downloadBackupFile();
-    showToast("Backup JSON file downloaded.");
+  const handleDownloadBackup = async () => {
+    try {
+      await downloadBackupFile();
+      showToast("Backup JSON file downloaded.");
+    } catch (err) {
+      alert("Failed to download backup. Please try again.");
+    }
   };
 
   const handleUploadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -54,10 +62,10 @@ export function SettingsView() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const jsonContent = event.target?.result as string;
       if (jsonContent) {
-        const result = restoreData(jsonContent);
+        const result = await restoreData(jsonContent);
         if (result.success) {
           showToast("Data restored successfully!");
         } else {
@@ -71,17 +79,25 @@ export function SettingsView() {
     }
   };
 
-  const handleSeed = () => {
+  const handleSeed = async () => {
     if (confirm("Load full sample Pakistani retail inventory (Shan, Tapal, Olper's, Rooh Afza, Dalda, etc.) and sample customers?")) {
-      seedData(true);
-      showToast("Sample data loaded successfully.");
+      const ok = await seedData(true);
+      if (ok) {
+        showToast("Sample data loaded successfully.");
+      } else {
+        alert("Failed to load sample data. Please try again.");
+      }
     }
   };
 
-  const handleReset = () => {
-    if (confirm("⚠️ WARNING: This will erase all products, transactions, and customer khata records from LocalStorage. Are you sure you want to proceed?")) {
-      resetData();
-      showToast("Database has been reset.");
+  const handleReset = async () => {
+    if (confirm("⚠️ WARNING: This will erase all products, transactions, and customer khata records from the database. Are you sure you want to proceed?")) {
+      const ok = await resetData();
+      if (ok) {
+        showToast("Database has been reset.");
+      } else {
+        alert("Failed to reset database. Please try again.");
+      }
     }
   };
 
@@ -268,10 +284,10 @@ export function SettingsView() {
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
         <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2 border-b border-slate-100 pb-3">
           <Database className="w-5 h-5 text-purple-600" />
-          LocalStorage Data Backup &amp; Recovery
+          Database Backup &amp; Recovery
         </h3>
         <p className="text-xs text-slate-500">
-          All your inventory items, sales records, customer ledgers, and settings are securely stored in your browser&apos;s LocalStorage. You can export a JSON backup file anytime or restore from a previous backup.
+          All your inventory items, sales records, customer ledgers, and settings are securely stored in your MongoDB database. You can export a JSON backup file anytime or restore from a previous backup.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
@@ -317,7 +333,7 @@ export function SettingsView() {
           <div>
             <span className="font-bold text-rose-900 text-xs sm:text-sm">Factory Reset Database</span>
             <p className="text-xs text-rose-600 mt-0.5">
-              Permanently erase all local inventory, sales registers, and customer Khata balances.
+              Permanently erase all inventory, sales registers, and customer Khata balances.
             </p>
           </div>
 

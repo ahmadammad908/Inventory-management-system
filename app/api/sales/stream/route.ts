@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "../../../../lib/mongodb";
 import Sale from "@/models/Sale";
-
+export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   await connectDB();
 
